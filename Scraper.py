@@ -65,11 +65,7 @@ def follow_uu(u,p,path):
     bot.follow_users(users_to_follow)
     
 if __name__=='__main__':
-    pp = Pool(95)
+    pp = Pool(100)
     pp.map(ap.main,all_urls)
     pp.terminate()
     pp.join()
-
-
-    
-    
