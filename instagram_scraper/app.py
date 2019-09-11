@@ -16,6 +16,9 @@ import re
 import sys
 import textwrap
 import time
+import asyncio
+Ttime=0
+
 ##sys.path.append(os.path.join(sys.path[0], '../'))
 ##print(os.getcwd())
 ##
@@ -147,7 +150,7 @@ class InstagramScraper(object):
                             destination='./', retain_username=False, interactive=False,
                             quiet=False, maximum=0, media_metadata=False, profile_metadata=False, latest=False,
                             latest_stamps=False, cookiejar=None,
-                            media_types=['image', 'video', 'story-image', 'story-video'],
+                            media_types=['image'],
                             tag=False, location=False, search_location=False, comments=False,
                             verbose=0, include_location=False, filter=None, proxies={}, no_check_certificate=False,
                                                         template='{urlname}')
@@ -211,10 +214,10 @@ class InstagramScraper(object):
     def sleep(self, secs):
         min_delay = 1
         for _ in range(secs // min_delay):
-            time.sleep(min_delay)
-            if self.quit:
+            time.sleep(1)
+            if True:
                 return
-        time.sleep(secs % min_delay)
+        #time.sleep(secs % min_delay)
 
     def _retry_prompt(self, url, exception_message):
         """Show prompt and return True: retry, False: ignore, None: abort"""
@@ -505,7 +508,7 @@ class InstagramScraper(object):
             self.logger.debug("Exception in worker thread", exc_info=sys.exc_info())
             raise
 
-    def __scrape_query(self, media_generator, executor=concurrent.futures.ThreadPoolExecutor(max_workers=MAX_CONCURRENT_DOWNLOADS)):
+    def __scrape_query(self, media_generator, executor=concurrent.futures.ThreadPoolExecutor(max_workers=10)):
         """Scrapes the specified value for posted media."""
         self.quit = False
         try:
@@ -518,7 +521,7 @@ class InstagramScraper(object):
                 dst = self.get_dst_dir(value)
 
                 if self.include_location:
-                    media_exec = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+                    media_exec = concurrent.futures.ThreadPoolExecutor(max_workers=10)
 
                 iter = 0
                 for item in tqdm.tqdm(media_generator(value), desc='Searching {0} for posts'.format(value), unit=" media",
@@ -670,7 +673,7 @@ class InstagramScraper(object):
             details = self.__get_media_details(code)
             item['location'] = details.get('location')
 
-    def scrape(self, executor=concurrent.futures.ThreadPoolExecutor(max_workers=MAX_CONCURRENT_DOWNLOADS)):
+    def scrape(self, executor=concurrent.futures.ThreadPoolExecutor(max_workers=10)):
         """Crawls through and downloads user's media"""
         self.session.headers = {'user-agent': STORIES_UA}
         try:
@@ -846,11 +849,12 @@ class InstagramScraper(object):
         username = user['username']
 
         if self.include_location:
-            media_exec = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+            media_exec = concurrent.futures.ThreadPoolExecutor(max_workers=10)
 
         iter = 0
         for item in tqdm.tqdm(self.query_media_gen(user), desc='Searching {0} for posts'.format(username),
                               unit=' media', disable=self.quiet):
+            
             # -Filter command line
             if self.filter:
                 if 'tags' in item:
@@ -915,9 +919,10 @@ class InstagramScraper(object):
             try:
                 while True:
                     for item in media:
-                        if not self.is_new_media(item):
-                            return
-                        yield item
+                        if self.__get_timestamp(item)>Ttime and self.__get_timestamp(item)<1558702787:
+                            if not self.is_new_media(item):
+                                return
+                            yield item
 
                     if end_cursor:
                         media, end_cursor = self.__query_media(user['id'], end_cursor)
@@ -1027,115 +1032,118 @@ class InstagramScraper(object):
     def download(self, item, save_dir='./'):
         """Downloads the media file."""
         for full_url, base_name in self.templatefilename(item):
-            url = full_url.split('?')[0] #try the static url first, stripping parameters
+            global Ttime
+            if self.__get_timestamp(item)>Ttime and self.__get_timestamp(item)<1558702787:
+                url = full_url.split('?')[0] #try the static url first, stripping parameters
 
-            file_path = os.path.join(save_dir, base_name)
+                file_path = os.path.join(save_dir, base_name)
 
-            if not os.path.exists(os.path.dirname(file_path)):
-                self.make_dir(os.path.dirname(file_path))
+                if not os.path.exists(os.path.dirname(file_path)):
+                    self.make_dir(os.path.dirname(file_path))
 
-            if not os.path.isfile(file_path):
-                headers = {'Host': urlparse(url).hostname}
+                if not os.path.isfile(file_path):
+                    headers = {'Host': urlparse(url).hostname}
 
-                part_file = file_path + '.part'
-                downloaded = 0
-                total_length = None
-                with open(part_file, 'wb') as media_file:
-                    try:
-                        retry = 0
-                        retry_delay = RETRY_DELAY
-                        while(True):
-                            if self.quit:
-                                return
-                            try:
-                                downloaded_before = downloaded
-                                headers['Range'] = 'bytes={0}-'.format(downloaded_before)
+                    part_file = file_path + '.part'
+                    downloaded = 0
+                    total_length = None
+                    with open(part_file, 'wb') as media_file:
+                        try:
+                            retry = 0
+                            retry_delay = RETRY_DELAY
+                            while(True):
+                                if self.quit:
+                                    return
+                                try:
+                                    downloaded_before = downloaded
+                                    headers['Range'] = 'bytes={0}-'.format(downloaded_before)
 
-                                with self.session.get(url, cookies=self.cookies, headers=headers, stream=True, timeout=CONNECT_TIMEOUT) as response:
-                                    if response.status_code == 404 or response.status_code == 410:
-                                        #on 410 error see issue #343
-                                        #instagram don't lie on this
-                                        break
-                                    if response.status_code == 403 and url != full_url:
-                                        #see issue #254
-                                        url = full_url
-                                        continue
-                                    response.raise_for_status()
+                                    with self.session.get(url, cookies=self.cookies, headers=headers, stream=True, timeout=CONNECT_TIMEOUT) as response:
+                                        if response.status_code == 404 or response.status_code == 410:
+                                            #on 410 error see issue #343
+                                            #instagram don't lie on this
+                                            break
+                                        if response.status_code == 403 and url != full_url:
+                                            #see issue #254
+                                            url = full_url
+                                            continue
+                                        response.raise_for_status()
 
-                                    if response.status_code == 206:
-                                        try:
-                                            match = re.match(r'bytes (?P<first>\d+)-(?P<last>\d+)/(?P<size>\d+)', response.headers['Content-Range'])
-                                            range_file_position = int(match.group('first'))
-                                            if range_file_position != downloaded_before:
-                                                raise Exception()
-                                            total_length = int(match.group('size'))
-                                            media_file.truncate(total_length)
-                                        except:
-                                            raise requests.exceptions.InvalidHeader('Invalid range response "{0}" for requested "{1}"'.format(
-                                                response.headers.get('Content-Range'), headers.get('Range')))
-                                    elif response.status_code == 200:
-                                        if downloaded_before != 0:
-                                            downloaded_before = 0
-                                            downloaded = 0
-                                            media_file.seek(0)
-                                        content_length = response.headers.get('Content-Length')
-                                        if content_length is None:
-                                            self.logger.warning('No Content-Length in response, the file {0} may be partially downloaded'.format(base_name))
+                                        if response.status_code == 206:
+                                            try:
+                                                match = re.match(r'bytes (?P<first>\d+)-(?P<last>\d+)/(?P<size>\d+)', response.headers['Content-Range'])
+                                                range_file_position = int(match.group('first'))
+                                                if range_file_position != downloaded_before:
+                                                    raise Exception()
+                                                total_length = int(match.group('size'))
+                                                media_file.truncate(total_length)
+                                            except:
+                                                raise requests.exceptions.InvalidHeader('Invalid range response "{0}" for requested "{1}"'.format(
+                                                    response.headers.get('Content-Range'), headers.get('Range')))
+                                        elif response.status_code == 200:
+                                            if downloaded_before != 0:
+                                                downloaded_before = 0
+                                                downloaded = 0
+                                                media_file.seek(0)
+                                            content_length = response.headers.get('Content-Length')
+                                            if content_length is None:
+                                                self.logger.warning('No Content-Length in response, the file {0} may be partially downloaded'.format(base_name))
+                                            else:
+                                                total_length = int(content_length)
+                                                media_file.truncate(total_length)
                                         else:
-                                            total_length = int(content_length)
-                                            media_file.truncate(total_length)
-                                    else:
-                                        raise PartialContentException('Wrong status code {0}', response.status_code)
+                                            raise PartialContentException('Wrong status code {0}', response.status_code)
 
-                                    for chunk in response.iter_content(chunk_size=64*1024):
-                                        if chunk:
-                                            downloaded += len(chunk)
-                                            media_file.write(chunk)
-                                        if self.quit:
-                                            return
+                                        for chunk in response.iter_content(chunk_size=64*1024):
+                                            if chunk:
+                                                downloaded += len(chunk)
+                                                media_file.write(chunk)
+                                            if self.quit:
+                                                return
 
-                                if downloaded != total_length and total_length is not None:
-                                    raise PartialContentException('Got first {0} bytes from {1}'.format(downloaded, total_length))
+                                    if downloaded != total_length and total_length is not None:
+                                        raise PartialContentException('Got first {0} bytes from {1}'.format(downloaded, total_length))
 
-                                break
+                                    break
 
-                            # In case of exception part_file is not removed on purpose,
-                            # it is easier to exemine it later when analising logs.
-                            # Please do not add os.remove here.
-                            except (KeyboardInterrupt):
-                                raise
-                            except (requests.exceptions.RequestException, PartialContentException) as e:
-                                media = url
-                                if item['shortcode'] and item['shortcode'] != '':
-                                    media += " from https://www.instagram.com/p/" + item['shortcode']
-                                if downloaded - downloaded_before > 0:
-                                    # if we got some data on this iteration do not count it as a failure
-                                    self.logger.warning('Continue after exception {0} on {1}'.format(repr(e), media))
-                                    retry = 0 # the next fail will be first in a row with no data
-                                    continue
-                                if retry < MAX_RETRIES:
-                                    self.logger.warning('Retry after exception {0} on {1}'.format(repr(e), media))
-                                    print(retry_delay)
-                                    self.sleep(retry_delay)
-                                    retry_delay = min( 2 * retry_delay, MAX_RETRY_DELAY )
-                                    retry = retry + 1
-                                    continue
-                                else:
-                                    keep_trying = self._retry_prompt(media, repr(e))
-                                    if keep_trying == True:
-                                        retry = 0
+                                # In case of exception part_file is not removed on purpose,
+                                # it is easier to exemine it later when analising logs.
+                                # Please do not add os.remove here.
+                                except (KeyboardInterrupt):
+                                    raise
+                                except (requests.exceptions.RequestException, PartialContentException) as e:
+                                    media = url
+                                    if item['shortcode'] and item['shortcode'] != '':
+                                        media += " from https://www.instagram.com/p/" + item['shortcode']
+                                    if downloaded - downloaded_before > 0:
+                                        # if we got some data on this iteration do not count it as a failure
+                                        self.logger.warning('Continue after exception {0} on {1}'.format(repr(e), media))
+                                        retry = 0 # the next fail will be first in a row with no data
                                         continue
-                                    elif keep_trying == False:
-                                        break
-                                raise
-                    finally:
-                        media_file.truncate(downloaded)
+                                    if retry < MAX_RETRIES:
+                                        self.logger.warning('Retry after exception {0} on {1}'.format(repr(e), media))
+                                        self.sleep(retry_delay)
+                                        retry_delay = min( 2 * retry_delay, MAX_RETRY_DELAY )
+                                        retry = retry + 1
+                                        continue
+                                    else:
+                                        keep_trying = self._retry_prompt(media, repr(e))
+                                        if keep_trying == True:
+                                            retry = 0
+                                            continue
+                                        elif keep_trying == False:
+                                            break
+                                    raise
+                        finally:
+                            media_file.truncate(downloaded)
 
-                if downloaded == total_length or total_length is None and downloaded > 100:
-                    os.rename(part_file, file_path)
-                    timestamp = self.__get_timestamp(item)
-                    file_time = int(timestamp if timestamp else time.time())
-                    os.utime(file_path, (file_time, file_time))
+                    if downloaded == total_length or total_length is None and downloaded > 100:
+                        os.rename(part_file, file_path)
+                        timestamp = self.__get_timestamp(item)
+                        file_time = int(timestamp if timestamp else time.time())
+                        os.utime(file_path, (file_time, file_time))
+            else:
+                break
 
     def templatefilename(self, item):
 
@@ -1168,9 +1176,15 @@ class InstagramScraper(object):
         """Returns True if the media is new."""
         if self.latest is False or self.last_scraped_filemtime == 0:
             return True
-
+        
         current_timestamp = self.__get_timestamp(item)
-        return current_timestamp > 0 and current_timestamp > self.last_scraped_filemtime
+        return current_timestamp > 0 and Ttime > self.last_scraped_filemtime
+
+    def my_is_new(self,item):
+        if self.__get_timestamp(item)>Ttime and self.__get_timestamp(item)<1558702787:
+            return True
+        else:
+            return False
 
     @staticmethod
     def __get_timestamp(item):
@@ -1321,21 +1335,19 @@ class InstagramScraper(object):
 
 
 def main(u):
+    global Ttime
+    Ttime=1516531721
     parser = argparse.ArgumentParser(
         description="instagram-scraper scrapes and downloads an instagram user's photos and videos.",
         epilog=textwrap.dedent("""
         You can hide your credentials from the history, by reading your
         username from a local file:
-
         $ instagram-scraper @insta_args.txt user_to_scrape
-
         with insta_args.txt looking like this:
         -u=my_username
         -p=my_password
-
         You can add all arguments you want to that file, just remember to have
         one argument per line.
-
         Customize filename:
         by adding option --template or -T
         Default is: {urlname}
@@ -1354,7 +1366,6 @@ def main(u):
         {h}: hour, format is: 00-23h
         {m}: minute, format is 00-59m
         {s}: second, format is 00-59s
-
         """),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         fromfile_prefix_chars='@')
@@ -1463,7 +1474,3 @@ def main(u):
         scraper.scrape()
 
     scraper.save_cookies()
-
-
-##if __name__ == '__main__':
-##    main()
