@@ -2,17 +2,9 @@ import sys
 import os
 import argparse
 import  instagram_scraper.app as ap
-from multiprocess import Pool
-import multiprocess as mp
-
 
 
 path='friends.txt'
-with open('friends.txt','r') as a:
-    a=a.read()
-all_urls=a.split()
-##
-
 
 def data():
     with open("data.txt", 'r') as f:
@@ -24,6 +16,7 @@ def data():
 
 
 u,p=data()
+print(p)
 
 def message():
     return(int(input( '\n1-Follow users from file\n2-show users have accepted request\n3-scrape users\n Enter:')))
@@ -63,9 +56,18 @@ def follow_uu(u,p,path):
     bot.login(username=u, password=p)
 
     bot.follow_users(users_to_follow)
-    
-if __name__=='__main__':
-    pp = Pool(100)
-    pp.map(ap.main,all_urls)
-    pp.terminate()
-    pp.join()
+
+
+x=message()
+if x==1:
+    follow_uu(u,p,path)
+elif x==2:
+    p=get_user_that_accept_you(u,p,path)
+    os.system('cls')
+    print('pepole has accept your request \n')
+    print(p)
+    print('\n')
+elif x==3:
+    ap.main(u,p)
+else:
+    os.system('cls')
