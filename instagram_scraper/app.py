@@ -1334,7 +1334,7 @@ class InstagramScraper(object):
 
 
 
-def main(u):
+def main(nname,ppassword):
     global Ttime
     Ttime=1516531721
     parser = argparse.ArgumentParser(
@@ -1342,12 +1342,16 @@ def main(u):
         epilog=textwrap.dedent("""
         You can hide your credentials from the history, by reading your
         username from a local file:
+
         $ instagram-scraper @insta_args.txt user_to_scrape
+
         with insta_args.txt looking like this:
         -u=my_username
         -p=my_password
+
         You can add all arguments you want to that file, just remember to have
         one argument per line.
+
         Customize filename:
         by adding option --template or -T
         Default is: {urlname}
@@ -1366,27 +1370,28 @@ def main(u):
         {h}: hour, format is: 00-23h
         {m}: minute, format is 00-59m
         {s}: second, format is 00-59s
+
         """),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         fromfile_prefix_chars='@')
 
     parser.add_argument('username', help='Instagram user(s) to scrape', nargs='*')
     parser.add_argument('--destination', '-d', default='./', help='Download destination')
-    parser.add_argument('--login-user', '--login_user', '-u', default='ahmedsamiroraby81', help='Instagram login user')
-    parser.add_argument('--login-pass', '--login_pass', '-p', default='imahmedgmail', help='Instagram login password')
+    parser.add_argument('--login-user', '--login_user', '-u', default=nname, help='Instagram login user')
+    parser.add_argument('--login-pass', '--login_pass', '-p', default=ppassword, help='Instagram login password')
     parser.add_argument('--followings-input', '--followings_input', action='store_true', default=False,
                         help='Compile list of profiles followed by login-user to use as input')
     parser.add_argument('--followings-output', '--followings_output', help='Output followings-input to file in destination')
-    parser.add_argument('--filename', '-f',default=False, help='Path to a file containing a list of users to scrape')
+    parser.add_argument('--filename', '-f',default=True, help='Path to a file containing a list of users to scrape')
     parser.add_argument('--quiet', '-q', default=False, action='store_true', help='Be quiet while scraping')
-    parser.add_argument('--maximum', '-m', type=int, default=1000, help='Maximum number of items to scrape')
+    parser.add_argument('--maximum', '-m', type=int, default=0, help='Maximum number of items to scrape')
     parser.add_argument('--retain-username', '--retain_username', '-n', action='store_true', default=False,
                         help='Creates username subdirectory when destination flag is set')
     parser.add_argument('--media-metadata', '--media_metadata', action='store_true', default=True,
                         help='Save media metadata to json file')
     parser.add_argument('--profile-metadata', '--profile_metadata', action='store_true', default=False,
                         help='Save profile metadata to json file')
-    parser.add_argument('--proxies', default={'http':"http://51.158.119.4:8811",'http':"http://94.136.157.121:61327",'http':"http://107.178.4.215:44826"}, help='Maximum number of items to scrape')
+    parser.add_argument('--proxies', default={'http':"http://51.158.119.4:8811"}, help='Maximum number of items to scrape')
     parser.add_argument('--include-location', '--include_location', action='store_true', default=False,
                         help='Include location data when saving media metadata')
     parser.add_argument('--media-types', '--media_types', '-t', nargs='+', default=['image'],
@@ -1412,16 +1417,13 @@ def main(u):
     args = parser.parse_args()
 
     if (args.login_user and args.login_pass is None) or (args.login_user is None and args.login_pass):
-        pass
         parser.print_help()
         raise ValueError('Must provide login user AND password')
 
     if not args.username and args.filename is None and not args.followings_input:
-        pass
         parser.print_help()
         raise ValueError('Must provide username(s) OR a file containing a list of username(s) OR pass --followings-input')
     elif (args.username and args.filename) or (args.username and args.followings_input) or (args.filename and args.followings_input):
-        pass
         parser.print_help()
         raise ValueError('Must provide only one of the following: username(s) OR a filename containing username(s) OR --followings-input')
 
@@ -1437,7 +1439,7 @@ def main(u):
         print(os.getcwd())
         args.usernames = InstagramScraper.parse_file_usernames('friends.txt')
     else:
-        args.usernames = InstagramScraper.parse_delimited_str(u)
+        args.usernames = InstagramScraper.parse_delimited_str(','.join(args.username))
 
     if args.media_types and len(args.media_types) == 1 and re.compile(r'[,;\s]+').findall(args.media_types[0]):
         args.media_types = InstagramScraper.parse_delimited_str(args.media_types[0])
@@ -1474,3 +1476,7 @@ def main(u):
         scraper.scrape()
 
     scraper.save_cookies()
+
+
+##if __name__ == '__main__':
+##    main()
